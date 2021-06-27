@@ -1,10 +1,9 @@
+from datetime import datetime
 import json
 import requests
 
-
-def send_request(query, offset, json_file):
-    url = "https://services.monster.io/jobs-svx-service/v2/monster/search-jobs/samsearch/en-ca"
-    headers = {
+URL = "https://services.monster.io/jobs-svx-service/v2/monster/search-jobs/samsearch/en-ca"
+HEADERS = {
     'authority': 'services.monster.io',
     'sec-ch-ua': '" Not A;Brand";v="99", "Chromium";v="90"',
     'accept': 'application/json, text/plain, */*',
@@ -15,20 +14,31 @@ def send_request(query, offset, json_file):
     'sec-fetch-site': 'cross-site',
     'sec-fetch-mode': 'cors',
     'sec-fetch-dest': 'empty',
-    'referer': 'https://www.monster.ca/jobs/search?q=QA+Engineer&where=&page=6',
-    'accept-language': 'en-US,en;q=0.9',}
+    'referer': 'https://www.monster.ca/',
+    'accept-language': 'en-US,en;q=0.9',
+    }
 
-    data = '{"jobQuery":{"locations":[{"address":"","country":"ca","radius":{"unit":"km","value":"20"}}],"excludeJobs":[],"companyDisplayNames":[],"query":"QA Engineer"},"offset":20,"pageSize":100,"searchId":"","fingerprintId":"01b67215fbde83ba8bd88ec6fa768a03","jobAdsRequest":{"position":[1,2,3,4,5,6,7,8,9,10],"placement":{"component":"JSR_LIST_VIEW","appName":"monster"}}}'
+MIN_OFFSET = 0
+MAX_OFFSET = 1000
+STEP = 30
 
-    response = requests.post(url, headers=headers, data=data)
 
+def send_request(query, offset, json_file):
+
+    data = inject_query(query, offset)
+
+    session = requests.Session()
+    response = session.post(URL, headers=HEADERS, data=data)
     job_results = response.json().get("jobResults")
-    print(job_results)
-
     collected = get_data(job_results)
-
     json.dump(collected, json_file, indent=4, sort_keys=True, ensure_ascii=False)
 
+
+def inject_query(query, offset):
+    body = {"jobQuery":{"locations":[{"address":"","country":"ca","radius":{"unit":"km","value":"20"}}],"excludeJobs":[],"companyDisplayNames":[],"query":"QA Engineer"},"offset":20,"pageSize":100,"searchId":"","fingerprintId":"01b67215fbde83ba8bd88ec6fa768a03","jobAdsRequest":{"position":[1,2,3,4,5,6,7,8,9,10],"placement":{"component":"JSR_LIST_VIEW","appName":"monster"}}}
+    body["jobQuery"]["query"] = query 
+    body["offset"] = offset
+    return json.dumps(body)
 
 def get_data(job_results):
     collected = []
@@ -48,14 +58,19 @@ def get_data(job_results):
         'applyUrl' : application.get("applyUrl"),
         'title' : titles.get("title")
         }
-        collected.append(job_data)
+
+        if recency == 'Today' or recency == '1 day ago' or recency == '2 days ago':
+            collected.append(job_data)
     return collected
 
 
-def save_data():
-    with open('saved_jobs.json', 'w') as file:
-        send_request("QA Engineer", 0, file)
-        # for offset in range(0, 1000, 20):
+def save_data(query):
+    filename = str(datetime.date(datetime.now())) + '.json'
+    with open(filename, 'w+') as file:
+        for offset in range(MIN_OFFSET, MAX_OFFSET, STEP):
+            send_request(query, offset, file)
+            print("Processing vacancies")
 
 if __name__ == "__main__":
-    save_data()
+    query = input("Insert profession to find: ")
+    save_data(query)
